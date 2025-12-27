@@ -1,0 +1,10 @@
+{
+  "id": "ai-quiz-panel",
+  "name": "AI Quiz Panel",
+  "version": "0.1.0",
+  "minAppVersion": "1.5.0",
+  "description": "Generate and take multiple-choice quizzes from the active note using an LLM. Encrypted local storage.",
+  "author": "GarbledHamster",
+  "authorUrl": "",
+  "isDesktopOnly": false
+}

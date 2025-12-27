@@ -1,0 +1,370 @@
+/*
+  Theme-safe palette
+  - Uses Obsidian's CSS variables so it blends with ANY theme (light/dark/custom).
+  - Increases contrast (stronger borders + clearer hover/focus states).
+  - Hard edges (square corners) everywhere except the question-map dots (intentionally circular).
+*/
+
+.aiq-root,
+.aiq-modal {
+  /* Shape */
+  --aiq-radius: 0px;
+  --aiq-radius-sm: 0px;
+
+  /* Surfaces */
+  --aiq-surface: var(--background-primary);
+  --aiq-surface-2: var(--background-secondary);
+  --aiq-surface-3: var(--background-secondary-alt, var(--background-secondary));
+
+  /* Inputs / buttons */
+  --aiq-field-bg: var(--background-modifier-form-field, var(--aiq-surface-2));
+  --aiq-hover: var(
+    --background-modifier-hover,
+    color-mix(in srgb, var(--interactive-accent) 6%, var(--aiq-surface))
+  );
+
+  /* Borders (stronger than Obsidian defaults for readability in low-contrast themes) */
+  --aiq-border: color-mix(in srgb, var(--background-modifier-border) 72%, var(--text-muted));
+  --aiq-border-strong: color-mix(in srgb, var(--background-modifier-border) 55%, var(--text-normal));
+
+  /* Accents */
+  --aiq-accent: var(--interactive-accent);
+  --aiq-accent-bg: color-mix(in srgb, var(--interactive-accent) 16%, var(--aiq-surface));
+  --aiq-accent-border: color-mix(in srgb, var(--interactive-accent) 60%, var(--aiq-border));
+
+  /* Status */
+  --aiq-danger: var(--color-red);
+  --aiq-success: var(--color-green);
+  --aiq-danger-bg: color-mix(in srgb, var(--color-red) 12%, var(--aiq-surface));
+  --aiq-success-bg: color-mix(in srgb, var(--color-green) 12%, var(--aiq-surface));
+}
+
+.aiq-root {
+  padding: 18px;
+}
+
+.aiq-topbar {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.aiq-topbar-main {
+  margin-bottom: 16px;
+}
+
+.aiq-tabs {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.aiq-spacer { flex: 1; }
+
+.aiq-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+.aiq-btn {
+  border: 1px solid var(--aiq-border);
+  background: var(--aiq-field-bg);
+  color: var(--text-normal);
+  padding: 7px 12px;
+  border-radius: var(--aiq-radius);
+  font-weight: 750;
+  cursor: pointer;
+}
+.aiq-btn:hover {
+  background: var(--aiq-hover);
+  border-color: var(--aiq-border-strong);
+}
+.aiq-btn:focus-visible {
+  outline: 2px solid var(--aiq-accent);
+  outline-offset: 2px;
+}
+.aiq-btn-primary {
+  background: var(--aiq-accent-bg);
+  border-color: var(--aiq-accent-border);
+}
+.aiq-btn-danger {
+  background: var(--aiq-danger-bg);
+  border-color: color-mix(in srgb, var(--color-red) 55%, var(--aiq-border));
+}
+
+.aiq-grid { display: grid; gap: 12px; }
+.aiq-grid-2 { grid-template-columns: 1fr 1fr; }
+@media (max-width: 700px){ .aiq-grid-2 { grid-template-columns: 1fr; } }
+
+.aiq-field label {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+.aiq-field input, .aiq-field select, .aiq-field textarea {
+  width: 100%;
+  background: var(--aiq-field-bg);
+  color: var(--text-normal);
+  border: 1px solid var(--aiq-border);
+  border-radius: var(--aiq-radius);
+  padding: 9px 11px;
+}
+.aiq-field input:focus, .aiq-field select:focus, .aiq-field textarea:focus {
+  outline: 2px solid var(--aiq-accent);
+  outline-offset: 1px;
+}
+.aiq-field textarea { min-height: 140px; resize: vertical; }
+
+.aiq-muted { color: var(--text-muted); font-size: 12px; }
+
+.aiq-card {
+  border: 1px solid var(--aiq-border);
+  border-radius: var(--aiq-radius);
+  padding: 14px;
+  background: var(--aiq-surface-2);
+}
+
+.aiq-card-actions { margin-top: 12px; }
+
+.aiq-qtext {
+  font-size: 18px;
+  font-weight: 900;
+  line-height: 1.25;
+}
+
+.aiq-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.aiq-choice {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  width: 100%;
+  text-align: left;
+  border: 1px solid var(--aiq-border);
+  border-radius: var(--aiq-radius);
+  padding: 12px 12px;
+  background: var(--aiq-surface);
+  font-weight: 750;
+  cursor: pointer;
+  white-space: normal;
+  line-height: 1.25;
+}
+.aiq-choice:hover {
+  background: var(--aiq-hover);
+  border-color: var(--aiq-border-strong);
+}
+.aiq-choice:focus-visible {
+  outline: 2px solid var(--aiq-accent);
+  outline-offset: 2px;
+}
+.aiq-choice.selected {
+  background: var(--aiq-accent-bg);
+  border-color: var(--aiq-accent-border);
+}
+.aiq-choice.correct {
+  background: var(--aiq-success-bg);
+  border-color: color-mix(in srgb, var(--color-green) 60%, var(--aiq-border));
+}
+.aiq-choice.incorrect {
+  background: var(--aiq-danger-bg);
+  border-color: color-mix(in srgb, var(--color-red) 60%, var(--aiq-border));
+}
+
+.aiq-map {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.aiq-dot {
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--aiq-border);
+  border-radius: 999px;
+  background: var(--aiq-field-bg);
+  color: var(--text-normal);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-weight: 900;
+  padding: 0;
+}
+.aiq-dot:hover {
+  background: var(--aiq-hover);
+  border-color: var(--aiq-border-strong);
+}
+.aiq-dot:focus { outline: 2px solid var(--aiq-accent); outline-offset: 2px; }
+.aiq-dot.active {
+  border-color: var(--aiq-accent);
+  background: var(--aiq-accent-bg);
+}
+.aiq-dot.good { border-color: var(--color-green); }
+.aiq-dot.bad { border-color: var(--color-red); }
+
+.aiq-explain {
+  margin-top: 12px;
+  padding: 12px;
+  border-radius: var(--aiq-radius);
+  border: 1px solid var(--aiq-border);
+  background: var(--aiq-surface-3);
+  font-size: 12px;
+}
+
+.aiq-card ul {
+  margin: 10px 0 0;
+  padding-left: 18px;
+}
+.aiq-card li { margin: 4px 0; }
+
+.aiq-status {
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--text-muted);
+  min-height: 16px;
+}
+
+
+.aiq-nav { margin-top: 14px; }
+.aiq-generate-hint { margin-top: 10px; }
+.aiq-modal-actions { margin-top: 14px; }
+
+.aiq-source-mode { margin-top: 14px; }
+.aiq-radio {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+}
+.aiq-radio input { margin: 0; }
+.aiq-prompt-wrap { margin-top: 10px; }
+.aiq-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  border: 1px solid var(--aiq-border);
+  border-radius: var(--aiq-radius);
+  padding: 10px 12px;
+  background: var(--aiq-field-bg);
+  color: var(--text-normal);
+  margin-top: 8px;
+  line-height: 1.35;
+}
+
+/* Make modal content feel "native" to any theme, with hard edges */
+.aiq-modal .modal-content {
+  background: var(--aiq-surface);
+  border: 1px solid var(--aiq-border);
+  border-radius: var(--aiq-radius);
+  /* Safe-area aware padding (mobile notches) */
+  padding: calc(18px + env(safe-area-inset-top)) 18px calc(14px + env(safe-area-inset-bottom)) 18px;
+}
+
+
+/* Obsidian Setting: make Custom instructions textarea full-width and below description */
+.aiq-setting-textarea { flex-direction: column; align-items: flex-start; }
+.aiq-setting-textarea .setting-item-info { width: 100%; padding-right: 0; }
+.aiq-setting-textarea .setting-item-control { width: 100%; justify-content: flex-start; margin-top: 10px; }
+.aiq-setting-textarea textarea,
+.aiq-custom-instructions { width: 100%; max-width: 100%; resize: vertical; min-height: 120px; }
+
+@media (max-width: 600px) {
+  .aiq-modal-full {
+    width: 100%;
+    height: calc(100vh - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+    height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+    max-height: none;
+    margin: 0;
+    border-radius: 0;
+  }
+  .aiq-modal-full .modal-content {
+    height: 100%;
+    overflow: auto;
+  }
+
+  .aiq-root { padding: 12px; }
+  .aiq-body { gap: 12px; }
+  .aiq-card { padding: 14px; }
+  .aiq-dot { width: 34px; height: 34px; }
+  .aiq-btn { padding: 8px 12px; }
+  .aiq-qtext { font-size: 16px; }
+  .aiq-choice { padding: 12px 12px; }
+}
+
+
+/* Centered top menu */
+.aiq-menu {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  width: 100%;
+}
+
+.aiq-menu-btn {
+  min-width: 110px;
+  min-height: 42px;
+  text-align: center;
+  white-space: normal;
+  line-height: 1.15;
+  padding: 8px 12px;
+}
+
+/* Quiz title bar actions */
+.aiq-quiz-titlebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.aiq-quiz-title-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.aiq-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.aiq-row-left,
+.aiq-row-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.aiq-subtitle {
+  margin-top: -8px;
+  margin-bottom: 6px;
+}
+
+@media (max-width: 380px) {
+  .aiq-menu-btn {
+    flex: 1 1 calc(50% - 10px);
+    min-width: 120px;
+  }
+}
+
+@media (max-width: 290px) {
+  .aiq-menu-btn {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+}
