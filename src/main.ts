@@ -10,6 +10,13 @@ import {
   WorkspaceLeaf,
   requestUrl
 } from "obsidian";
+import {
+  DEFAULT_QUESTION_TYPE_SETTINGS,
+  MULTIPLE_CHOICE_TOGGLE_KEY,
+  questionTypeRegistry,
+  type QuestionTypeRegistryEntry,
+  type QuestionTypeSettings
+} from "./questionTypes";
 
 const VIEW_TYPE = "ai-quiz-panel-view";
 
@@ -59,6 +66,7 @@ type Settings = {
   immediateFeedback: boolean;
   rememberPassword: boolean; // convenience, not true security
   customInstructions: string; // appended to each generation request
+  questionTypeSettings: QuestionTypeSettings;
 };
 
 type VaultPlain = {
@@ -85,7 +93,8 @@ const DEFAULT_SETTINGS: Settings = {
   defaultChoices: 4,
   immediateFeedback: false,
   rememberPassword: false,
-  customInstructions: ""
+  customInstructions: "",
+  questionTypeSettings: { ...DEFAULT_QUESTION_TYPE_SETTINGS }
 };
 
 function uid(): string {
@@ -232,64 +241,107 @@ function difficultySpec(level: Difficulty): string {
   if (level === "easy") return [
     "EASY SPEC:",
     "- Direct recall; no inference.",
-    "- Distractors obviously wrong.",
-    "- Exactly one correct choice."
+    "- For choice-based items, distractors are obviously wrong.",
+    "- For non-choice items, answers are short and explicit."
   ].join("\n");
   if (level === "hard") return [
     "HARD SPEC:",
     "- Requires inference/connecting ideas.",
-    "- Distractors plausible but false per text.",
-    "- Exactly one correct choice."
+    "- For choice-based items, distractors are plausible but false per text.",
+    "- For non-choice items, include a clear textual anchor in the answer."
   ].join("\n");
   if (level === "very_hard") return [
     "VERY HARD SPEC:",
     "- Multi-step reasoning; connect distant parts.",
-    "- Distractors highly plausible.",
-    "- Still unambiguous; exactly one correct choice.",
-    "- Explanation cites the textual clue."
+    "- For choice-based items, distractors are highly plausible.",
+    "- Keep correct selections unambiguous and cite the textual clue in the explanation."
   ].join("\n");
   return [
     "MEDIUM SPEC:",
     "- Understanding + paraphrase + cause/effect.",
-    "- Distractors plausible but not tricky.",
-    "- Exactly one correct choice."
+    "- For choice-based items, distractors are plausible but not tricky.",
+    "- For non-choice items, answers should be concise."
   ].join("\n");
 }
 
 function systemPrompt(customInstructions?: string): string {
   const base = [
-    "You generate multiple-choice quizzes.",
+    "You generate quizzes using the requested question types.",
     "Output ONLY valid json.",
     "No markdown. No commentary.",
     "Use ONLY the provided source text.",
-    "Exactly one correct answer per question."
+    "Follow the question schemas provided in the user prompt."
   ].join(" ");
   const extra = (customInstructions || "").trim();
   if (!extra) return base;
   return base + " " + "Additional instructions (must not override rules): " + extra;
 }
 
-function generateUserPrompt(text: string, title: string, count: number, diff: Difficulty, choicesCount: number, customInstructions?: string, avoidQuestions?: string[]): string {
+type QuestionTypePlanEntry = { entry: QuestionTypeRegistryEntry; quantity: number };
+
+function buildQuestionTypePlan(settings: Settings, totalCount: number): QuestionTypePlanEntry[] {
+  const questionTypeSettings = settings.questionTypeSettings || DEFAULT_QUESTION_TYPE_SETTINGS;
+  const enabledEntries = questionTypeRegistry.filter((entry) => !!questionTypeSettings[entry.enabledToggleKey]);
+
+  if (enabledEntries.length === 0) {
+    const fallback = questionTypeRegistry.find((entry) => entry.enabledToggleKey === MULTIPLE_CHOICE_TOGGLE_KEY);
+    return fallback ? [{ entry: fallback, quantity: totalCount }] : [];
+  }
+
+  if (enabledEntries.length === 1) {
+    return [{ entry: enabledEntries[0], quantity: totalCount }];
+  }
+
+  const plan = enabledEntries.map((entry) => ({
+    entry,
+    quantity: clampInt(questionTypeSettings[entry.quantityKey], 0, totalCount, 0)
+  })).filter((item) => item.quantity > 0);
+
+  if (plan.length === 0) {
+    return [{ entry: enabledEntries[0], quantity: totalCount }];
+  }
+
+  return plan;
+}
+
+function generateUserPrompt(
+  text: string,
+  title: string,
+  plan: QuestionTypePlanEntry[],
+  diff: Difficulty,
+  choicesCount: number,
+  customInstructions?: string,
+  avoidQuestions?: string[]
+): string {
+  const totalCount = plan.reduce((sum, item) => sum + item.quantity, 0);
+  const typeLines = plan.map(({ entry, quantity }) => `- ${entry.description}: ${quantity}`);
+  const schemaLines = plan.map(({ entry }) => `- ${entry.schemaShape}`);
   return [
     "Output format: json",
     "Return a valid json object only.",
     "",
     difficultySpec(diff),
     "",
-    `Number of questions: ${count}`,
+    `Number of questions: ${totalCount}`,
     `Choices per question: ${choicesCount}`,
     title ? `Title preference: ${title}` : "",
+    "",
+    "Question type mix (use this exact distribution):",
+    ...typeLines,
+    "",
+    "Question schemas (each question must match one schema):",
+    ...schemaLines,
     "",
     "Do not repeat or paraphrase any of these questions (write truly new ones):",
     ...(avoidQuestions && avoidQuestions.length ? avoidQuestions.slice(0, 120).map(q => "- " + String(q).slice(0, 280)) : ["- (none)"]),
     "",
     "REQUIRED JSON SHAPE:",
-    `{ "title": string, "questions": [ { "q": string, "choices": string[], "answer_index": number, "explanation": string } ] }`,
+    `{ "title": string, "questions": [ question ] }`,
     "",
     "Rules:",
-    "- choices.length must match choices per question exactly.",
-    "- choices should be short phrases.",
-    "- explanation is 1-2 sentences.",
+    "- If a schema uses choices, choices.length must match choices per question exactly.",
+    "- Choices should be short phrases.",
+    "- Explanation is 1-2 sentences.",
     "",
     customInstructions && customInstructions.trim() ? "CUSTOM INSTRUCTIONS (rules win if conflict):" : "",
     customInstructions && customInstructions.trim() ? customInstructions.trim() : "",
@@ -297,6 +349,10 @@ function generateUserPrompt(text: string, title: string, count: number, diff: Di
     "SOURCE TEXT (only allowed knowledge):",
     text.trim()
   ].filter(Boolean).join("\n");
+}
+
+function totalQuestionsFromPlan(plan: QuestionTypePlanEntry[]): number {
+  return plan.reduce((sum, item) => sum + item.quantity, 0);
 }
 
 function extractOutputText(resp: any): string {
@@ -414,7 +470,20 @@ function recommendedMaxOutputTokens(questionCount: number): number {
   return Math.max(1200, Math.min(12000, est));
 }
 
+function matchQuestionType(question: unknown): QuestionTypeRegistryEntry | null {
+  for (const entry of questionTypeRegistry) {
+    if (entry.typeGuard(question)) return entry;
+  }
+  return null;
+}
+
 function normalizeQuestion(q: any, choicesCount: number): QuizQuestion {
+  const matched = matchQuestionType(q);
+  if (!matched) throw new Error("Bad model output: question did not match any expected schema.");
+  if (matched.enabledToggleKey !== MULTIPLE_CHOICE_TOGGLE_KEY) {
+    throw new Error(`Bad model output: unsupported question type (${matched.description}).`);
+  }
+
   const qq = String(q?.q || "").trim();
   const choices = Array.isArray(q?.choices) ? q.choices.map((x: any) => String(x).trim()).filter(Boolean) : [];
   let ai = Number.isFinite(q?.answer_index) ? q.answer_index : parseInt(String(q?.answer_index), 10);
@@ -1342,7 +1411,11 @@ this.addSettingTab(new AIQuizSettingTab(this.app, this));
     if (isSetup || !this.encrypted) {
       this.vaultPlain = {
         apiKey: "",
-        settings: { ...DEFAULT_SETTINGS, rememberPassword: remember },
+        settings: {
+          ...DEFAULT_SETTINGS,
+          questionTypeSettings: { ...DEFAULT_QUESTION_TYPE_SETTINGS },
+          rememberPassword: remember
+        },
         quizzes: []
       };
       this.password = password;
@@ -1352,7 +1425,14 @@ this.addSettingTab(new AIQuizSettingTab(this.app, this));
     }
 
     const plain = await decryptWithPassword(this.encrypted, password);
-    plain.settings = { ...DEFAULT_SETTINGS, ...(plain.settings || {}) };
+    plain.settings = {
+      ...DEFAULT_SETTINGS,
+      ...(plain.settings || {}),
+      questionTypeSettings: {
+        ...DEFAULT_QUESTION_TYPE_SETTINGS,
+        ...(plain.settings?.questionTypeSettings || {})
+      }
+    };
     plain.settings.rememberPassword = remember;
 
     this.vaultPlain = plain;
@@ -1367,7 +1447,14 @@ this.addSettingTab(new AIQuizSettingTab(this.app, this));
     try {
       const pw = await rememberPasswordDecrypt(this.encrypted.remembered, this.encrypted.deviceKeyB64);
       const plain = await decryptWithPassword(this.encrypted, pw);
-      plain.settings = { ...DEFAULT_SETTINGS, ...(plain.settings || {}) };
+      plain.settings = {
+        ...DEFAULT_SETTINGS,
+        ...(plain.settings || {}),
+        questionTypeSettings: {
+          ...DEFAULT_QUESTION_TYPE_SETTINGS,
+          ...(plain.settings?.questionTypeSettings || {})
+        }
+      };
       this.vaultPlain = plain;
       this.password = pw;
       return true;
@@ -1446,14 +1533,18 @@ this.addSettingTab(new AIQuizSettingTab(this.app, this));
     const text = (sourceText || "").trim();
     if (!text) throw new Error("Source text is empty.");
 
+    const plan = buildQuestionTypePlan(v.settings, count);
+    const totalQuestions = totalQuestionsFromPlan(plan);
+    if (!totalQuestions) throw new Error("Question plan is empty. Enable at least one question type.");
+
     const body = {
       model: v.settings.model,
       input: [
         { role: "system", content: systemPrompt() },
-        { role: "user", content: generateUserPrompt(text, title, count, diff, choicesCount, v.settings.customInstructions) }
+        { role: "user", content: generateUserPrompt(text, title, plan, diff, choicesCount, v.settings.customInstructions) }
       ],
       temperature: v.settings.temperature,
-      max_output_tokens: Math.max(v.settings.maxTokens, recommendedMaxOutputTokens(count))
+      max_output_tokens: Math.max(v.settings.maxTokens, recommendedMaxOutputTokens(totalQuestions))
     };
 
     const resp = await requestUrl({
@@ -1508,6 +1599,9 @@ this.addSettingTab(new AIQuizSettingTab(this.app, this));
     if (quiz.submitted) throw new Error("Quiz already submitted.");
 
     const desired = clampInt(count, 1, 50, 5);
+    const plan = buildQuestionTypePlan(v.settings, desired);
+    const totalQuestions = totalQuestionsFromPlan(plan);
+    if (!totalQuestions) throw new Error("Question plan is empty. Enable at least one question type.");
 
     let sourceText = "";
     if (quiz.sourceText && quiz.sourceText.trim()) {
@@ -1532,15 +1626,20 @@ this.addSettingTab(new AIQuizSettingTab(this.app, this));
     while (collected.length < desired && attempts < 3) {
       attempts++;
       const reqCount = Math.min(12, desired - collected.length);
+      const reqPlan = buildQuestionTypePlan(v.settings, reqCount);
+      const reqTotalQuestions = totalQuestionsFromPlan(reqPlan);
 
       const body = {
         model: v.settings.model,
         input: [
           { role: "system", content: systemPrompt() },
-          { role: "user", content: generateUserPrompt(sourceText, quiz.title, reqCount, quiz.difficulty, quiz.choicesCount, v.settings.customInstructions, existingQuestions) }
+          {
+            role: "user",
+            content: generateUserPrompt(sourceText, quiz.title, reqPlan, quiz.difficulty, quiz.choicesCount, v.settings.customInstructions, existingQuestions)
+          }
         ],
         temperature: v.settings.temperature,
-        max_output_tokens: Math.max(v.settings.maxTokens, recommendedMaxOutputTokens(reqCount))
+        max_output_tokens: Math.max(v.settings.maxTokens, recommendedMaxOutputTokens(reqTotalQuestions))
       };
 
       const resp = await requestUrl({
