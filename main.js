@@ -885,6 +885,7 @@ const body = root.createDiv({ cls: "aiq-body" });
     card.createEl("div", { text: file ? `Current page: ${file.path}` : "No active note selected.", cls: "aiq-muted" });
     let sourceMode = file ? "page" : "prompt";
     let customSourceText = "";
+    let multiSourceText = "";
     const srcWrap = card.createDiv({ cls: "aiq-source-mode" });
     srcWrap.createEl("div", { text: "Source", cls: "aiq-muted" });
     const radioName = `aiq-src-${uid()}`;
@@ -900,6 +901,11 @@ const body = root.createDiv({ cls: "aiq-body" });
     r2i.name = radioName;
     r2i.checked = sourceMode === "prompt";
     r2.createSpan({ text: "Custom prompt / source text" });
+    const r3 = srcWrap.createEl("label", { cls: "aiq-radio" });
+    const r3i = r3.createEl("input", { type: "radio" });
+    r3i.name = radioName;
+    r3i.checked = sourceMode === "multi";
+    r3.createSpan({ text: "Multiple sources" });
     const promptWrap = card.createDiv({ cls: "aiq-prompt-wrap" });
     const ta = promptWrap.createEl("textarea", { cls: "aiq-textarea" });
     ta.rows = 6;
@@ -907,10 +913,20 @@ const body = root.createDiv({ cls: "aiq-body" });
     ta.value = customSourceText;
     const promptHint = promptWrap.createEl("div", { cls: "aiq-muted" });
     promptHint.setText("Tip: When using a custom prompt, it is treated as the source text for the quiz.");
+    const multiWrap = card.createDiv({ cls: "aiq-prompt-wrap aiq-multi-source-wrap" });
+    const multiTa = multiWrap.createEl("textarea", { cls: "aiq-textarea" });
+    multiTa.rows = 6;
+    multiTa.placeholder = "Paste multiple source texts (separated by blank lines) to generate a quiz from…";
+    multiTa.value = multiSourceText;
+    const multiHint = multiWrap.createEl("div", { cls: "aiq-muted" });
+    multiHint.setText("Tip: Multiple sources will be combined into a single quiz prompt.");
     const refresh = () => {
-        const show = sourceMode === "prompt";
-        ta.style.display = show ? "" : "none";
-        promptHint.style.display = show ? "" : "none";
+        const showPrompt = sourceMode === "prompt";
+        const showMulti = sourceMode === "multi";
+        ta.style.display = showPrompt ? "" : "none";
+        promptHint.style.display = showPrompt ? "" : "none";
+        multiTa.style.display = showMulti ? "" : "none";
+        multiHint.style.display = showMulti ? "" : "none";
     };
     r1i.onchange = () => { if (r1i.checked) {
         sourceMode = "page";
@@ -920,7 +936,12 @@ const body = root.createDiv({ cls: "aiq-body" });
         sourceMode = "prompt";
         refresh();
     } };
+    r3i.onchange = () => { if (r3i.checked) {
+        sourceMode = "multi";
+        refresh();
+    } };
     ta.oninput = () => { customSourceText = ta.value; };
+    multiTa.oninput = () => { multiSourceText = multiTa.value; };
     refresh();
     let count = 10;
     let title = "";
@@ -963,6 +984,13 @@ const body = root.createDiv({ cls: "aiq-body" });
                 const src = (customSourceText || ta.value || "").trim();
                 if (!src)
                     throw new Error("Custom prompt/source text is empty.");
+                const prefTitle = (title || "").trim() || "Quiz";
+                await this.plugin.generateFromText(src, count, prefTitle, diff, choices);
+            }
+            else if (sourceMode === "multi") {
+                const src = (multiSourceText || multiTa.value || "").trim();
+                if (!src)
+                    throw new Error("Multi-source text is empty.");
                 const prefTitle = (title || "").trim() || "Quiz";
                 await this.plugin.generateFromText(src, count, prefTitle, diff, choices);
             }
