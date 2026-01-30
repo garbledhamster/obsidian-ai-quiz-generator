@@ -340,7 +340,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin-top: 10px;
+  margin-top: 18px;
 }
 
 .aiq-row-left,
@@ -351,8 +351,21 @@
 }
 
 .aiq-subtitle {
-  margin-top: -8px;
-  margin-bottom: 6px;
+  margin-top: -4px;
+  margin-bottom: 12px;
+}
+
+.aiq-description {
+  margin-bottom: 16px;
+}
+
+.aiq-password-fields {
+  margin-bottom: 16px;
+}
+
+.aiq-status {
+  margin-top: 12px;
+  min-height: 20px;
 }
 
 @media (max-width: 380px) {

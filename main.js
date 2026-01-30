@@ -395,8 +395,8 @@ class UnlockModal extends obsidian_1.Modal {
         contentEl.empty();
         contentEl.createEl("h2", { text: "AI Quiz Generator" });
         contentEl.createEl("div", { text: this.mode === "setup" ? "Set master password" : "Enter master password to unlock", cls: "aiq-muted aiq-subtitle" });
-        contentEl.createEl("div", { text: "This encrypts plugin data stored locally (data.json).", cls: "aiq-muted" });
-        const wrap = contentEl.createDiv({ cls: "aiq-grid aiq-grid-2" });
+        contentEl.createEl("div", { text: "This encrypts plugin data stored locally (data.json).", cls: "aiq-muted aiq-description" });
+        const wrap = contentEl.createDiv({ cls: "aiq-grid aiq-grid-2 aiq-password-fields" });
         const f1 = wrap.createDiv({ cls: "aiq-field" });
         f1.createEl("label", { text: "Master password" });
         this.passEl = f1.createEl("input", { type: "password" });
@@ -411,6 +411,9 @@ class UnlockModal extends obsidian_1.Modal {
         const rememberWrap = left.createEl("label", { cls: "aiq-muted" });
         this.rememberEl = rememberWrap.createEl("input", { type: "checkbox" });
         rememberWrap.appendText(" Remember password (convenience; weak security)");
+        // Initialize checkbox with saved preference
+        const savedRemember = this.plugin.vaultPlain?.settings?.rememberPassword || false;
+        this.rememberEl.checked = savedRemember;
         const cancelBtn = right.createEl("button", { text: "Cancel", cls: "aiq-btn" });
         cancelBtn.onclick = () => {
             if (!this.resolved) {
@@ -420,7 +423,7 @@ class UnlockModal extends obsidian_1.Modal {
             this.close();
         };
         const btn = right.createEl("button", { text: this.mode === "setup" ? "Create" : "Unlock", cls: "aiq-btn aiq-btn-primary" });
-        btn.onclick = async () => {
+        const handleSubmit = async () => {
             try {
                 this.setStatus("Working...");
                 const p1 = this.passEl.value.trim();
@@ -435,11 +438,35 @@ class UnlockModal extends obsidian_1.Modal {
                 }
                 await this.plugin.unlockWithPassword(p1, this.mode === "setup", this.rememberEl.checked);
                 this.close();
+                if (!this.resolved) {
+                    this.resolved = true;
+                    this.done(true);
+                }
             }
             catch (e) {
                 this.setStatus(e?.message || "Unlock failed.", true);
             }
         };
+        btn.onclick = handleSubmit;
+        // Handle Enter key in password fields
+        this.passEl.addEventListener("keydown", (e) => {
+            if (e.key === "Enter") {
+                e.preventDefault();
+                if (this.mode === "setup" && !this.pass2El.value) {
+                    this.pass2El.focus();
+                } else {
+                    handleSubmit();
+                }
+            }
+        });
+        this.pass2El.addEventListener("keydown", (e) => {
+            if (e.key === "Enter") {
+                e.preventDefault();
+                handleSubmit();
+            }
+        });
+        // Auto-focus first input
+        setTimeout(() => this.passEl.focus(), 50);
         this.statusEl = contentEl.createDiv({ cls: "aiq-status" });
     }
     onClose() {
@@ -1179,10 +1206,19 @@ new AIQuizSettingTab(this.app, this));
     async loadEncrypted() {
         try {
             const data = await this.loadData();
-            if (data?.v === 1)
+            // Validate encrypted data structure
+            if (data && data.v === 1 && data.salt && data.iv && data.data) {
                 this.encrypted = data;
-            else
+            }
+            else if (data && Object.keys(data).length > 0) {
+                // Data exists but is not in expected format
+                console.warn("AI Quiz Generator: Encrypted data has unexpected format. Treating as corrupted.", data);
                 this.encrypted = null;
+            }
+            else {
+                // No data or empty object
+                this.encrypted = null;
+            }
         }
         catch (e) {
             // Missing / unreadable data.json (or a transient read error) should be
@@ -1222,26 +1258,45 @@ new AIQuizSettingTab(this.app, this));
             new obsidian_1.Notice("Vault created.");
             return;
         }
-        const plain = await decryptWithPassword(this.encrypted, password);
-        plain.settings = { ...DEFAULT_SETTINGS, ...(plain.settings || {}) };
-        plain.settings.rememberPassword = remember;
-        this.vaultPlain = plain;
-        this.password = password;
-        await this.saveEncrypted();
-        new obsidian_1.Notice("Unlocked.");
+        try {
+            const plain = await decryptWithPassword(this.encrypted, password);
+            if (!plain) {
+                throw new Error("Invalid password.");
+            }
+            plain.settings = { ...DEFAULT_SETTINGS, ...(plain.settings || {}) };
+            plain.settings.rememberPassword = remember;
+            this.vaultPlain = plain;
+            this.password = password;
+            await this.saveEncrypted();
+            new obsidian_1.Notice("Unlocked.");
+        }
+        catch (e) {
+            // Decryption failure typically means wrong password
+            console.error("AI Quiz Generator: Unlock failed.", e);
+            throw new Error("Invalid password. Please try again.");
+        }
     }
     async tryRememberedUnlock() {
         if (!this.encrypted?.remembered || !this.encrypted.deviceKeyB64)
             return false;
         try {
             const pw = await rememberPasswordDecrypt(this.encrypted.remembered, this.encrypted.deviceKeyB64);
+            if (!pw) {
+                console.warn("AI Quiz Generator: Failed to decrypt remembered password.");
+                return false;
+            }
             const plain = await decryptWithPassword(this.encrypted, pw);
+            if (!plain) {
+                console.warn("AI Quiz Generator: Failed to decrypt vault with remembered password.");
+                return false;
+            }
             plain.settings = { ...DEFAULT_SETTINGS, ...(plain.settings || {}) };
             this.vaultPlain = plain;
             this.password = pw;
             return true;
         }
-        catch {
+        catch (e) {
+            console.warn("AI Quiz Generator: Auto-unlock with remembered password failed. User will need to enter password manually.", e);
             return false;
         }
     }
