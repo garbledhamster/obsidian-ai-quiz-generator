@@ -767,6 +767,11 @@ class UnlockModal extends obsidian_1.Modal {
     this.rememberEl = rememberWrap.createEl("input", { type: "checkbox" });
     rememberWrap.appendText(" Remember password on this device (convenience; weak security)");
 
+    // Set initial checkbox state from saved settings
+    if (this.plugin.vaultPlain?.settings?.rememberPassword) {
+      this.rememberEl.checked = true;
+    }
+
     const cancelBtn = right.createEl("button", { text: "Cancel", cls: "aiq-btn" });
     cancelBtn.onclick = () => {
       if (!this.resolved) { this.resolved = true; this.done(false); }
@@ -774,7 +779,7 @@ class UnlockModal extends obsidian_1.Modal {
     };
 
     const btn = right.createEl("button", { text: this.mode === "setup" ? "Create" : "Unlock", cls: "aiq-btn aiq-btn-primary" });
-    btn.onclick = async () => {
+    const submitHandler = async () => {
       try {
         this.setStatus("Working...");
         const p1 = this.passEl.value.trim();
@@ -785,11 +790,26 @@ class UnlockModal extends obsidian_1.Modal {
           if (p1 !== p2) throw new Error("Passwords do not match.");
         }
         await this.plugin.unlockWithPassword(p1, this.mode === "setup", this.rememberEl.checked);
+        if (!this.resolved) { this.resolved = true; this.done(true); }
         this.close();
       } catch (e) {
         this.setStatus((e?.message) || "Unlock failed.", true);
       }
     };
+    btn.onclick = submitHandler;
+
+    // Enable Enter key to submit
+    const handleKeyDown = (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        submitHandler();
+      }
+    };
+    this.passEl.addEventListener("keydown", handleKeyDown);
+    this.pass2El.addEventListener("keydown", handleKeyDown);
+
+    // Auto-focus first password field
+    setTimeout(() => this.passEl.focus(), 10);
 
     this.statusEl = contentEl.createDiv({ cls: "aiq-status" });
   }
@@ -1789,8 +1809,12 @@ class AIQuizPanelPlugin extends obsidian_1.Plugin {
       id: "generate-quiz-from-active-note",
       name: "Generate quiz from active note",
       callback: async () => {
-        await this.ensureUnlocked();
-        new GenerateModal(this.app, this).open();
+        try {
+          await this.ensureUnlocked();
+          new GenerateModal(this.app, this).open();
+        } catch (e) {
+          new obsidian_1.Notice((e?.message) || "Locked.");
+        }
       }
     });
 
